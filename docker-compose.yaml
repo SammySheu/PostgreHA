@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres-primary:
+    image: postgres-primary
+    container_name: postgres-primary
+    environment:
+      - POSTGRES_USER=postgres     # Set this explicitly to postgres
+      - POSTGRES_PASSWORD=postgres # Set a password for postgres user
+      - POSTGRES_DB=postgres
+      - DB_REP_USER=sammy
+      - DB_REP_PASS=sammy
+      - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
+      - POSTGRES_PASSWORD_ENCRYPTION=scram-sha-256
+      - PGDATA=/var/lib/postgresql/data/pgdata # Explicitly set PGDATA
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./primary/pgdata:/var/lib/postgresql/data
+    networks:
+      - postgres_network
+    user: postgres # Explicitly set user
+  
+  postgres-replica:
+    image: postgres-replica
+    container_name: postgres-replica
+    environment: 
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PRIMARY_DB_HOST=postgres-primary
+      - PRIMARY_DB_PORT=5432
+      - PRIMARY_DB_REP_USER=sammy
+      - PRIMARY_DB_REP_PASS=sammy
+      - POSTGRES_HOST_AUTH_METHOD=scram-sha-256
+      - POSTGRES_PASSWORD_ENCRYPTION=scram-sha-256
+      - PGDATA=/var/lib/postgresql/data/pgdata # Explicitly set PGDATA
+    ports:
+      - "5433:5432"
+    depends_on:
+      - postgres-primary
+    volumes:
+      - ./replicas/pgdata:/var/lib/postgresql/data
+    networks:
+      - postgres_network
+    user: postgres # Explicitly set user
+  
+  postgres-pgpool:
+    image: postgres-pgpool
+    container_name: postgres-pgpool
+    ports:
+      - "9999:9999"
+    environment:
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=postgres-primary
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=postgres
+      - PGPOOL_PORT=9999
+      # Add health check credentials
+      - PGPOOL_HEALTH_CHECK_USER=postgres
+      - PGPOOL_HEALTH_CHECK_PASSWORD=postgres
+    volumes:
+      - ./pgpool/pgpool.conf:/etc/pgpool2/pgpool.conf
+    depends_on:
+      - postgres-primary
+      - postgres-replica
+    networks:
+      - postgres_network
+
+# volumes:
+#   postgres_primary_data:
+#     name: postgres_primary_data
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       device: ${PWD}/data/primary # This will create a directory in your project
+#   postgres_replica_data:
+#     name: postgres_replica_data
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       device: ${PWD}/data/replica # This will create a directory in your project
+
+networks:
+  postgres_network:
+    driver: bridge
